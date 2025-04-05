@@ -1033,6 +1033,47 @@ router.patch('/api/categories/:id/disable', async (req, res) => {
 });
 // this is the backend route we cjeck
 
+// Get available stock for a specific product
+router.get("/api/videos/stock/:productId", async (req, res) => {
+  try {
+    const { productId } = req.params;
+
+    // Validate the product ID format
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Invalid product ID format" 
+      });
+    }
+
+    // Find the product by ID
+    const product = await Video.findById(productId)
+      .select("quantity") // Only fetch the quantity field
+      .lean(); // Convert to plain JavaScript object
+
+    if (!product) {
+      return res.status(404).json({ 
+        success: false,
+        message: "Product not found" 
+      });
+    }
+
+    // Return the available quantity
+    res.status(200).json({
+      success: true,
+      quantity: product.quantity || 0 // Default to 0 if quantity is undefined
+    });
+
+  } catch (error) {
+    console.error("Error fetching product stock:", error);
+    res.status(500).json({ 
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+});
+
 export default router;
 
 
