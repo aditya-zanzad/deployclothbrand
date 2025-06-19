@@ -1031,10 +1031,6 @@ router.patch('/api/categories/:id/disable', async (req, res) => {
     });
   }
 });
-// this is the backend route we cjeck
-
-// backend/routes/index.js (append to your existing router)
-import PDFDocument from "pdfkit";
 
 // POST /api/order/create-cod-order
 router.post("/api/order/create-cod-order", async (req, res) => {
