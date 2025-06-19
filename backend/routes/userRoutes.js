@@ -1100,7 +1100,7 @@ router.post("/api/order/create-cod-order", async (req, res) => {
     const order = new Order({
       user_id: new mongoose.Types.ObjectId(user_id),
       order_id: orderId,
-      amount: parsedAmount , // Convert paise to rupees
+      amount: parsedAmount,
       currency: "INR",
       products: products.map((item) => ({
         videoUrl: item.videoUrl,
@@ -1157,48 +1157,20 @@ router.post("/api/order/create-cod-order", async (req, res) => {
       });
     }
 
-    // Generate PDF receipt
-    const doc = new PDFDocument();
-    let buffers = [];
-    doc.on("data", buffers.push.bind(buffers));
-    doc.on("end", async () => {
-      const pdfData = Buffer.concat(buffers).toString("base64");
+    await session.commitTransaction();
+    session.endSession();
 
-      await session.commitTransaction();
-      session.endSession();
-
-      res.status(201).json({
-        success: true,
-        order: {
-          id: order._id,
-          order_id: order.order_id,
-          amount: order.amount,
-          currency: order.currency,
-          status: order.status,
-          paymentMethod: order.paymentMethod,
-        },
-        receipt: pdfData,
-      });
+    res.status(201).json({
+      success: true,
+      order: {
+        id: order._id,
+        order_id: order.order_id,
+        amount: order.amount,
+        currency: order.currency,
+        status: order.status,
+        paymentMethod: order.paymentMethod,
+      },
     });
-
-    // Add content to PDF
-    doc.fontSize(20).text("Order Receipt", { align: "center" });
-    doc.moveDown();
-    doc.fontSize(12).text(`Order ID: ${orderId}`);
-    doc.text(`Customer: ${name}`);
-    doc.text(`Email: ${email}`);
-    doc.text(`Address: ${street}, ${city}, ${pincode}`);
-    doc.text(`Phone: ${phone}`);
-    doc.moveDown();
-    doc.text("Items:", { underline: true });
-    products.forEach((item, index) => {
-      doc.text(
-        `${index + 1}. ${item.category} (${item.size}) - ₹${item.price} x ${item.quantity || 1}`
-      );
-    });
-    doc.moveDown();
-    doc.text(`Total Amount: ₹${order.amount}`, { align: "right" });
-    doc.end();
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
