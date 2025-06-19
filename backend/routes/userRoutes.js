@@ -1033,43 +1033,180 @@ router.patch('/api/categories/:id/disable', async (req, res) => {
 });
 // this is the backend route we cjeck
 
-// Get available stock for a specific product
-router.get("/api/videos/stock/:productId", async (req, res) => {
+// backend/routes/index.js (append to your existing router)
+import PDFDocument from "pdfkit";
+
+// POST /api/order/create-cod-order
+router.post("/api/order/create-cod-order", async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
-    const { productId } = req.params;
+    const { amount, user_id, products, shippingAddress } = req.body;
 
-    // Validate the product ID format
-    if (!mongoose.Types.ObjectId.isValid(productId)) {
-      return res.status(400).json({ 
-        success: false,
-        message: "Invalid product ID format" 
-      });
+    // Validate inputs
+    if (!amount || !user_id || !products?.length || !shippingAddress) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ success: false, message: "Missing required fields" });
     }
 
-    // Find the product by ID
-    const product = await Video.findById(productId)
-      .select("quantity") // Only fetch the quantity field
-      .lean(); // Convert to plain JavaScript object
-
-    if (!product) {
-      return res.status(404).json({ 
-        success: false,
-        message: "Product not found" 
-      });
+    if (!mongoose.Types.ObjectId.isValid(user_id)) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ success: false, message: "Invalid user ID" });
     }
 
-    // Return the available quantity
-    res.status(200).json({
-      success: true,
-      quantity: product.quantity || 0 // Default to 0 if quantity is undefined
+    // Validate amount
+    const parsedAmount = Number(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ success: false, message: "Invalid amount" });
+    }
+
+    // Validate shipping address
+    const { name, email, street, city, pincode, phone } = shippingAddress;
+    if (!name || !email || !street || !city || !pincode || !phone) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ success: false, message: "Incomplete shipping address" });
+    }
+
+    // Check product availability
+    for (const product of products) {
+      const video = await Video.findOne({
+        videoUrl: product.videoUrl,
+        category: product.category,
+        size: product.size,
+        price: product.price,
+      }).session(session);
+
+      if (!video || video.quantity < (product.quantity || 1)) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          success: false,
+          message: `Product out of stock: ${product.category} ${product.size}`,
+          code: "INSUFFICIENT_STOCK",
+        });
+      }
+    }
+
+    // Generate unique order_id
+    const orderId = `COD-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // Create order
+    const order = new Order({
+      user_id: new mongoose.Types.ObjectId(user_id),
+      order_id: orderId,
+      amount: parsedAmount , // Convert paise to rupees
+      currency: "INR",
+      products: products.map((item) => ({
+        videoUrl: item.videoUrl,
+        price: item.price,
+        quantity: item.quantity || 1,
+        category: item.category,
+        size: item.size,
+      })),
+      shippingAddress: {
+        name,
+        email,
+        street,
+        city,
+        pincode,
+        phone,
+      },
+      status: "cod_pending",
+      paymentMethod: "cod",
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
 
+    await order.save({ session });
+
+    // Update inventory
+    const bulkOps = products.map((product) => {
+      const quantity = Math.max(1, Number(product.quantity) || 1);
+      return {
+        updateOne: {
+          filter: {
+            videoUrl: product.videoUrl,
+            category: product.category,
+            size: product.size,
+            price: product.price,
+            quantity: { $gte: quantity },
+          },
+          update: {
+            $inc: { quantity: -quantity },
+            $set: { updatedAt: new Date() },
+          },
+        },
+      };
+    });
+
+    const bulkResult = await Video.bulkWrite(bulkOps, { session });
+
+    if (bulkResult.modifiedCount !== products.length) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(409).json({
+        success: false,
+        message: "Some items are out of stock",
+        code: "INSUFFICIENT_STOCK",
+      });
+    }
+
+    // Generate PDF receipt
+    const doc = new PDFDocument();
+    let buffers = [];
+    doc.on("data", buffers.push.bind(buffers));
+    doc.on("end", async () => {
+      const pdfData = Buffer.concat(buffers).toString("base64");
+
+      await session.commitTransaction();
+      session.endSession();
+
+      res.status(201).json({
+        success: true,
+        order: {
+          id: order._id,
+          order_id: order.order_id,
+          amount: order.amount,
+          currency: order.currency,
+          status: order.status,
+          paymentMethod: order.paymentMethod,
+        },
+        receipt: pdfData,
+      });
+    });
+
+    // Add content to PDF
+    doc.fontSize(20).text("Order Receipt", { align: "center" });
+    doc.moveDown();
+    doc.fontSize(12).text(`Order ID: ${orderId}`);
+    doc.text(`Customer: ${name}`);
+    doc.text(`Email: ${email}`);
+    doc.text(`Address: ${street}, ${city}, ${pincode}`);
+    doc.text(`Phone: ${phone}`);
+    doc.moveDown();
+    doc.text("Items:", { underline: true });
+    products.forEach((item, index) => {
+      doc.text(
+        `${index + 1}. ${item.category} (${item.size}) - ₹${item.price} x ${item.quantity || 1}`
+      );
+    });
+    doc.moveDown();
+    doc.text(`Total Amount: ₹${order.amount}`, { align: "right" });
+    doc.end();
   } catch (error) {
-    console.error("Error fetching product stock:", error);
-    res.status(500).json({ 
+    await session.abortTransaction();
+    session.endSession();
+    console.error("COD order creation error:", error);
+    res.status(500).json({
       success: false,
-      message: "Internal server error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined
+      message: error.message || "Server error",
+      code: "SERVER_ERROR",
     });
   }
 });
