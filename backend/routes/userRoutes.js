@@ -375,7 +375,7 @@ router.post("/api/auth/forgot-password", async (req, res) => {
         }
 
         const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: "1h" });
-        const link = `https://www.wholesalebaba.online/reset-password?token=${token}`;
+        const link = `${FRONTEND_URL}/reset-password?token=${token}`;
 
         const transporter = nodemailer.createTransport({
             service: "gmail",
