@@ -360,7 +360,7 @@ router.put("/:id/verify", async (req, res) => {
   }
 });
 
-FRONTEND_URL=https://www.wholesalebaba.online
+FRONTEND_URL="https://www.wholesalebaba.online"
 EMAIL_USER=wholesalebabaa@gmail.com
 EMAIL_PASS=sfuz vzgw zogf rqpn
 
