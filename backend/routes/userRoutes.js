@@ -360,9 +360,9 @@ router.put("/:id/verify", async (req, res) => {
   }
 });
 
-FRONTEND_URL="https://www.wholesalebaba.online"
-EMAIL_USER="wholesalebabaa@gmail.com"
-EMAIL_PASS="sfuz vzgw zogf rqpn"
+const FRONTEND_URL="https://www.wholesalebaba.online"
+const EMAIL_USER="wholesalebabaa@gmail.com"
+const EMAIL_PASS="sfuz vzgw zogf rqpn"
 
 // Forgot Password Route
 router.post("/api/auth/forgot-password", async (req, res) => {
