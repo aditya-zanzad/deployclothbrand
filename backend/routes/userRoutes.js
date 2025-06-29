@@ -360,9 +360,9 @@ router.put("/:id/verify", async (req, res) => {
   }
 });
 
-const FRONTEND_URL = "https://www.wholesalebaba.online";
-const EMAIL_USER = "wholesalebabaa@gmail.com";
-const EMAIL_PASS = "sfuz vzgw zogf rqpn";
+const FRONTEND_URL = process.env.FRONTEND_URL;
+const EMAIL_USER = process.env.EMAIL_USER;
+const EMAIL_PASS = process.env.EMAIL_PASS;
 
 // Forgot Password Route
 router.post("/api/auth/forgot-password", async (req, res) => {
@@ -375,13 +375,13 @@ router.post("/api/auth/forgot-password", async (req, res) => {
         }
 
         const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: "1h" });
-        const link = `https://www.wholesalebaba.online/reset-password?token=${token}`;
+        const link = `${FRONTEND_URL}/reset-password?token=${token}`;
 
         const transporter = nodemailer.createTransport({
             service: "gmail",
             auth: {
-                user: "wholesalebabaa@gmail.com",
-                pass: "sfuz vzgw zogf rqpn"
+                user: EMAIL_USER,
+                pass: EMAIL_PASS
             }
         });
 
